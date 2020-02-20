@@ -211,7 +211,7 @@ public class SQLitePlugin extends CordovaPlugin {
      *
      * @param dbName   The name of the database file
      */
-    private SQLiteAndroidDatabase openDatabase(String dbname, String key, CallbackContext cbc, boolean old_impl) throws Exception {
+    private SQLiteAndroidDatabase openDatabase(String dbname, String key, String salt, CallbackContext cbc, boolean old_impl) throws Exception {
         try {
             // ASSUMPTION: no db (connection/handle) is already stored in the map
             // [should be true according to the code in DBRunner.run()]
@@ -225,7 +225,7 @@ public class SQLitePlugin extends CordovaPlugin {
             Log.v("info", "Open sqlite db: " + dbfile.getAbsolutePath());
 
             SQLiteAndroidDatabase mydb = new SQLiteAndroidDatabase();
-            mydb.open(dbfile, key);
+            mydb.open(dbfile, key, salt);
 
             // NOTE: NO Android locking/closing BUG workaround needed here
             cbc.success();
@@ -322,6 +322,7 @@ public class SQLitePlugin extends CordovaPlugin {
     private class DBRunner implements Runnable {
         final String dbname;
         final String dbkey;
+        final String dbSalt;
 
         final BlockingQueue<DBQuery> q;
         final CallbackContext openCbc;
@@ -342,13 +343,24 @@ public class SQLitePlugin extends CordovaPlugin {
             }
             this.dbkey = key;
 
+            String salt = "";
+            if (options.has("salt")) {
+                try {
+                    salt = options.getString("salt");
+                } catch (JSONException e) {
+                    // NOTE: this should not happen!
+                    Log.e(SQLitePlugin.class.getSimpleName(), "unexpected JSON error getting salt key, ignored", e);
+                }
+            }
+            this.dbSalt = salt;
+
             this.q = new LinkedBlockingQueue<DBQuery>();
             this.openCbc = cbc;
         }
 
         public void run() {
             try {
-                this.mydb = openDatabase(dbname, this.dbkey, this.openCbc, false);
+                this.mydb = openDatabase(dbname, this.dbkey, this.dbSalt, this.openCbc, false);
             } catch (Exception e) {
                 Log.e(SQLitePlugin.class.getSimpleName(), "unexpected error, stopping db thread", e);
                 dbrmap.remove(dbname);
