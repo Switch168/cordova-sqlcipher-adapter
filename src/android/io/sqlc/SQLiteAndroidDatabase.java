@@ -81,8 +81,8 @@ class SQLiteAndroidDatabase
      *
      * @param dbfile   The database File specification
      */
-    void open(File dbfile, String key) throws Exception {
-        mydb = SQLiteDatabase.openOrCreateDatabase(dbfile, key, null);
+    void open(File dbfile, String key, String salt) throws Exception {
+        mydb = SQLiteDatabase.openOrCreateDatabase(dbfile, key, salt, null);
     }
 
     /**
