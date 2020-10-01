@@ -44,7 +44,17 @@
         DLog(@"Detected Library path: %@", libs);
         [appDBPaths setObject: libs forKey:@"libs"];
 
-        NSString *nosync = [libs stringByAppendingPathComponent:@"LocalDatabase"];
+        // added so the database file is saved in the app group so notificationextension can use
+        NSString *bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier];
+        NSString *appGroupId = [@"group." stringByAppendingString:bundleIdentifier]; // <--- a convention we establish here
+        NSURL *appGroupDirectoryPath = [[NSFileManager defaultManager] containerURLForSecurityApplicationGroupIdentifier:appGroupId];
+        DLog(@"Detected appGroupPath path parent: %@", appGroupDirectoryPath);
+        NSString *group = appGroupDirectoryPath.absoluteString;
+        DLog(@"Detected appGroupPath path: %@", appGroupDirectoryPath);
+        [appDBPaths setObject: group forKey:@"group"];
+        NSString *nosync = group;
+        // end added logic look below at OUR APP LANDS HERE
+        
         NSError *err;
         if ([[NSFileManager defaultManager] fileExistsAtPath: nosync])
         {
@@ -66,8 +76,9 @@
             else
             {
                 // fallback:
+                // OUR APP LANDS HERE
                 DLog(@"WARNING: error adding LocalDatabase directory: %@", err);
-                [appDBPaths setObject: libs forKey:@"nosync"];
+                [appDBPaths setObject: group forKey:@"nosync"];
             }
         }
     }
@@ -109,10 +120,11 @@
     NSMutableDictionary *options = [command.arguments objectAtIndex:0];
 
     NSString *dbfilename = [options objectForKey:@"name"];
+    NSString *dbSalt = [options objectForKey:@"salt"];
 
     NSString *dblocation = [options objectForKey:@"dblocation"];
     if (dblocation == NULL) dblocation = @"docs";
-    // DLog(@"using db location: %@", dblocation);
+     DLog(@"using db location: %@", dblocation);
 
     NSString *dbname = [self getDBPath:dbfilename at:dblocation];
 
@@ -158,7 +170,29 @@
                 const char *key = NULL;
                 if (dbkey != NULL && dbkey.length != 0) key = [dbkey UTF8String];
                 NSLog((key != NULL) ? @"Open DB with encryption" : @"Open DB with NO encryption");
-                if (key != NULL) sqlite3_key(db, key, strlen(key));
+                if (key != NULL) {
+                 sqlite3_key(db, key, strlen(key));
+                 // https://github.com/sqlcipher/sqlcipher/issues/255
+                 // PRAGMA cipher_salt = "x'01010101010101010101010101010101'";
+                  char *errorMsg;
+                  NSString *pragmaSql = [NSString stringWithFormat:@"PRAGMA cipher_salt = \"x'%@'\";", dbSalt];
+                  // NSLog(pragmaSql);
+                  if (sqlite3_exec(db, [pragmaSql UTF8String], NULL, NULL, &errorMsg) != SQLITE_OK)
+                  {
+                      DLog(@"failed to set database cipher_salt: %s", errorMsg);
+                  }
+                  
+                  {
+                    // NSLog(@"Setting cipher_plaintext_header_size");
+                    NSString *pragmaSql =
+                    [NSString stringWithFormat:@"PRAGMA cipher_plaintext_header_size = 32;"];
+                    // NSLog(pragmaSql);
+                    int status = sqlite3_exec(db, [pragmaSql UTF8String], NULL, NULL, NULL);
+                    if (status != SQLITE_OK) {
+                      NSLog(@"Error cipher_plaintext_header_size");
+                    }
+                  }
+                }
 
                 // XXX Brody TODO check this in Javascript instead.
                 // Attempt to read the SQLite master table [to support SQLCipher version]:
